@@ -1,0 +1,228 @@
+---
+title: "Data Analysis of Storm Data"
+author: "lintunnaing"
+date: "3/23/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+## **Synopsis** ##  
+##### The U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.  #####
+##### We use the dataset to analyze which types of events are most harmful to population health and which types have the greatest economic consequences. We can see two major events, "TORNADO"; with respect to population health, and "FLOOD"; on the economic consequences, have the highest side effects significantly.  #####
+##### We also make more in depth analysis on the data, which states in United States suffered the most on these two events and which months of the year are the worst. We find out "TORNADO" affects in the states "Alabama", "Taxes" and "Mississippi", and "FLOOD" affects in the states "California" most. Most of the "TORNADO" are happening in the month of "April" and "FLOOD" in "January" of the years.  #####
+##### By making preventive measures of the diasters focusing on the events "FLOOD" and "TORNADO" which are occuring in "January" and "April" respectively, in the highest affected states, we can reduce both economic consequences and harmful population health in advance.  #####
+
+
+## **Data Processing** ##  
+##### **Download the file from the given URL of the course website and extract files** #####  
+
+```{r download, cache = TRUE}
+if (!file.exists("repdata_data_StormData.csv.bz2")){
+    download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "repdata_data_StormData.csv.bz2")
+    print("invalidating")}
+```
+
+##### **Read csv.bz2 file & store in object "data"** #####  
+
+```{r load_data, cache = TRUE, cache.extra = tools::md5sum("repdata_data_StormData.csv.bz2")}
+data <- read.csv("repdata_data_StormData.csv.bz2", sep = ",")
+```
+
+##### **Load libraries** #####  
+
+```{r libraries}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+```
+
+##### **Structure of data** #####  
+
+```{r structure}
+str(data)
+```
+
+_We look for the structure of the dataset exploring from the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database, which consists of 902297 observations in 37 variables._  
+_We will mainly focus on the outcomes like fatalities, injuries, property and crop damages due to different event types._  
+
+
+##### **Duplicate original dataset "data" to "mod_data" and add "MONTH" column to mod_data** #####  
+##### **Find the levels of factor from "PROPDMGEXP" and "CROPDMGEXP"** #####  
+
+```{r factor}
+mod_data <- data
+
+mod_data$MONTH <- as.numeric(format(as.Date(mod_data$BGN_DATE, format = "%m/%d/%Y %H:%M:%S"),"%m"))
+
+unique(mod_data$PROPDMGEXP)
+unique(mod_data$CROPDMGEXP)
+```
+
+_There are few mislabeled data from exponential data "PROPDMGEXP" and "CROPDMGEXP"._  
+
+##### **Setup function to replace with exponential powers for PROPDMG and CROPDMG** #####  
+
+```{r replace_function}
+replace_data <- function(EXP_data) {
+    EXP_data <- replace(EXP_data, EXP_data %in% c("" ," ", "-", "?", "+"),"0")
+    EXP_data <- replace(EXP_data, EXP_data %in% c("h", "H"),"2")
+    EXP_data <- replace(EXP_data, EXP_data %in% c("k", "K"),"3")
+    EXP_data <- replace(EXP_data, EXP_data %in% c("m", "M"),"6")
+    EXP_data <- replace(EXP_data, EXP_data %in% c("b", "B"),"9")
+    EXP_data
+}
+```
+
+_We create a function to replace the following mislabeled and missing data from the two variables._  
+1. "", " ", "-", "?", "+" -> "0" (zero exponential)  
+2. "h", "H" -> "2" (square)  
+3. "k", "K" -> "3" (kilo)  
+4. "m", "M" -> "6" (million)  
+5. "b", "B" -> "9" (billion)  
+
+##### **Replaced with correct exponential values** #####  
+
+```{r replace_data}
+mod_data$PROPDMGEXP <- replace_data(mod_data$PROPDMGEXP)
+mod_data$CROPDMGEXP <- replace_data(mod_data$CROPDMGEXP)
+
+unique(mod_data$PROPDMGEXP)
+unique(mod_data$CROPDMGEXP)
+```
+
+_After replacing with the correct exponential values, we checked whether there is missing or invalid data remaining in the dataset._  
+
+##### **Types of events that are most harmful with respect to population health** #####  
+
+```{r pop_health}
+pop_health <- mod_data %>%
+    select(STATE, EVTYPE, FATALITIES, INJURIES) %>% 
+    group_by(EVTYPE) %>% 
+    summarise(total_fatalities = sum(FATALITIES), total_injuries = sum(INJURIES)) %>% 
+    arrange(desc(total_fatalities), desc(total_injuries))
+pop_health
+```
+_Firstly, we explore the event types which bring the highest fatalities and injuries to the population._  
+_We find out that "TORNADO" is the most disastrous event that is harmful to the population health._  
+
+##### **Calculate total property damage(million) by different event types** #####  
+
+```{r total_dmg}
+total_dmg <- mod_data %>%
+    transmute(MONTH, STATE, EVTYPE, PROPDMG = (PROPDMG * 10^as.numeric(PROPDMGEXP)),
+              CROPDMG = CROPDMG * 10^as.numeric(CROPDMGEXP)) %>% 
+    mutate(TOTAL_DMG_in_Million = (PROPDMG + CROPDMG)/1000000)
+```  
+
+_Secondly, we calculate the sum of the total property and crop damages, then turn the measured unit into "Million"._  
+
+## **Results** ##  
+
+##### **Economic consequences (property damage, crop damage) with related to event types** #####  
+
+```{r eco_conseq}
+eco_conseq <- total_dmg %>%
+    group_by(EVTYPE) %>%
+    summarise(TOTAL_DMG_by_EVTYPE = sum(TOTAL_DMG_in_Million)) %>%
+    arrange(desc(TOTAL_DMG_by_EVTYPE))
+head(eco_conseq, 20)
+```
+
+_We arrange the total damage in descending order and the result shows that "FLOOD" is the first major cause of property and crop damage._  
+
+##### **Histogram for top 20 Types of events which are harmful to population health**  #####  
+
+```{r pop_health_plot}
+top_20_HARMFUL_HEALTH <- head(pop_health, 20)
+
+fatalities_plot <- ggplot(top_20_HARMFUL_HEALTH, aes(reorder(EVTYPE, -total_fatalities), total_fatalities)) + geom_col() + theme(axis.text.x = element_text(angle = 45, size = 7, hjust = 1)) + xlab("EVENT TYPE")
+
+injuries_plot <- ggplot(top_20_HARMFUL_HEALTH, aes(reorder(EVTYPE, -total_injuries), total_injuries)) + geom_col() + theme(axis.text.x = element_text(angle = 45, size = 7, hjust = 1)) + xlab(" EVENT TYPE")
+
+grid.arrange(fatalities_plot, injuries_plot, ncol = 2, top = "TOP 20 FATALITIES & INJURIES EVENTS")
+```  
+
+_The above figure is plotting of the fatalities and injuries against different events._  
+_We will see "TORNADO" as a top event followed by "EXCESSIVE HEAT", "FLOOD", "TSTM WIND" and so on._  
+
+##### **Histogram for top 20 Types of events which have the greatest economic consequences** #####  
+
+```{r eco_conseq_plot}
+top_20_dmg <- head(eco_conseq, 20)
+
+ggplot(top_20_dmg, aes(x = reorder(EVTYPE, -TOTAL_DMG_by_EVTYPE), y = TOTAL_DMG_by_EVTYPE)) + geom_col() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7)) + xlab("EVENT TYPES") + ylab("TOTAL DAMAGE") + ggtitle("Histogram for top 20 events affect on economic consequence")
+```  
+
+_Similarly, on plotting the total damage of property and crop against different events, we will see "FLOOD" followed by "HARRICANE/TYPHOON", "TORNADO" as top events in the chart._  
+
+##### **Find out which state's economy was mostly affected by FLOOD** #####  
+
+```{r flood_state}
+FLOOD <- total_dmg %>%
+    filter(EVTYPE == "FLOOD") %>% 
+    group_by(STATE)
+
+FLOOD_BY_STATE <- FLOOD %>%
+    summarise(TOTAL_DAMAGE = sum(TOTAL_DMG_in_Million)) %>% 
+    arrange(desc(TOTAL_DAMAGE))
+FLOOD_BY_STATE
+```  
+
+_Filtering only the event "FLOOD" in different states, we realize that "CA", "California State" has the highest damage which is almost 3 times higher than its successor._  
+
+##### **Find out which month of the year's economy was the worst impact by FLOOD** #####  
+
+```{r flood_month}
+FLOOD_BY_MONTH <- FLOOD %>% 
+    group_by(MONTH) %>% 
+    summarise(TOTAL_DAMAGE_by_FLOOD = sum(TOTAL_DMG_in_Million)) %>% 
+    arrange(desc(TOTAL_DAMAGE_by_FLOOD))
+FLOOD_BY_MONTH
+```  
+
+_We again look for which month of the year is the biggest impact to economic damages by "FLOOD"._  
+_We find out "JANUARY" is the month of highest economic damage in the year across the United States._  
+
+##### **Find out which state's population health was the most harmful affected by TORNADO** #####  
+
+```{r tornado_state}
+TORNADO_BY_STATE <- mod_data %>% 
+    filter(EVTYPE == "TORNADO") %>% 
+    group_by(STATE) %>% 
+    summarise(TOTAL_FATALITIES = sum(FATALITIES), TOTAL_INJURIES = sum(INJURIES)) %>% 
+    arrange(desc(TOTAL_FATALITIES))
+TORNADO_BY_STATE
+```  
+
+_Like we did in the economic damage filters, we also look for highest harmful health caused by "TORNADO"._  
+_"Alabama State" followed by "Taxes State", "Mississippi State" are top 3 states affected by "TORNADO"._  
+
+##### **Find out which month of the year' population health was the worst impact by TORNADO** #####  
+
+```{r tornado_month}
+TORNADO_BY_MONTH <- mod_data %>% 
+    filter(EVTYPE == "TORNADO") %>% 
+    group_by(MONTH) %>% 
+    summarise(TOTAL_FATALITIES = sum(FATALITIES), TOTAL_INJURIES = sum(INJURIES)) %>% 
+    arrange(desc(TOTAL_FATALITIES))
+TORNADO_BY_MONTH
+```
+
+_"March", "April" and "May" are the time when "TORNADO" sweeps through the United States._  
+
+##### **Plotting the comparison of the most disastrous events, TORNADO and FLOOD occured monthly** #####    
+
+```{r top_month}
+ECO_MONTH_PLOT <- ggplot(FLOOD_BY_MONTH, aes(x = MONTH, y = TOTAL_DAMAGE_by_FLOOD)) + geom_point(size = 3, colour = "red", shape = 17) + geom_text(aes(label = MONTH, vjust = -0.5)) + ggtitle("Monthly total property and crop damage by FLOOD")
+
+FATALITIES_MONTH_PLOT <- ggplot(TORNADO_BY_MONTH, aes(x = MONTH, y = TOTAL_FATALITIES)) + geom_point(size = 3, colour = "red", shape = 17)+ geom_text(aes(label = MONTH, vjust = -0.5)) + ylab("FATALITIES by TORNADO") + ggtitle("Monthly total fatalities by TORNADO")
+
+INJURIES_MONTH_PLOT <- ggplot(TORNADO_BY_MONTH, aes(x = MONTH, y = TOTAL_INJURIES)) + geom_point(size = 3, colour = "red", shape = 17) + geom_text(aes(label = MONTH, vjust = -0.5)) + ylab("INJURIES by TORNADO") + ggtitle("Monthly total injuries by TORNADO")
+
+grid.arrange(FATALITIES_MONTH_PLOT, INJURIES_MONTH_PLOT, ECO_MONTH_PLOT, ncol = 2, bottom = "Population health impact and economic consequences by FLOOD and TORNADO")    
+```  
+
+_From the above plot, we can comment as the month "April" is the most harmful population health caused by "TORNADO", and the month "January" is the highest economic consequences caused by "FLOOD" starting from the year 1951 to 2011 November in United States._  
